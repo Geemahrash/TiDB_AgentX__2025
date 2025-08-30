@@ -1,6 +1,7 @@
 package com.backend.AI.controller;
 
 import com.backend.AI.storage.PromptStorage;
+import com.backend.AI.storage.PromptData;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,5 +20,10 @@ public class PromptController {
     public List<String> getPrompts(@PathVariable String sessionId) {
         return PromptStorage.getPrompts(sessionId);
     }
+    @GetMapping("/getPromptObjects")
+    public List<PromptData> getPromptObjects(@RequestParam String sessionId) {
+        return PromptStorage.getPromptObjects(sessionId);
+    }
+
 
 }

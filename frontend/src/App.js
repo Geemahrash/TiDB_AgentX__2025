@@ -15,7 +15,7 @@ function App() {
     setSessionId(existingSession);
 
     // Fetch existing prompts for this session
-    fetch(`http://localhost:8080/api/prompts/${existingSession}`)
+    fetch(`http://localhost:8080/api/getPromptObjects?sessionId=${existingSession}`)
       .then((res) => res.json())
       .then((data) => setPrompts(data))
       .catch((err) => console.error(err));
@@ -35,7 +35,7 @@ function App() {
       body: JSON.stringify(newPrompt),
     })
       .then(() =>
-        fetch(`http://localhost:8080/api/prompts/${sessionId}`)
+        fetch(`http://localhost:8080/api/getPromptObjects?sessionId=${sessionId}`)
           .then((res) => res.json())
           .then((data) => setPrompts(data))
       )
@@ -61,10 +61,14 @@ function App() {
 
       <h2>Chat History</h2>
       <ul>
-        {prompts.map((p, idx) => (
-          <li key={idx}>{p}</li>
-        ))}
-      </ul>
+        {prompts.map((obj, idx) => (
+        <li key={idx} style={{ marginBottom: "10px" }}>
+        <p><strong>Prompt:</strong> {obj.prompt}</p>
+        <p><strong>Answer:</strong> {obj.answer || "Not generated yet"}</p>
+        <p><strong>Required Data:</strong> {obj.requiredDataText || "None"}</p>
+      </li>
+  ))}
+</ul>
     </div>
   );
 }
