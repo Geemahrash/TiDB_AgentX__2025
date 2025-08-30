@@ -1,19 +1,35 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 
 function App() {
-  const [message, setMessage] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [response, setResponse] = useState("");
 
-  useEffect(() => {
-    fetch("http://localhost:8080/api/hello") // backend endpoint
-      .then((res) => res.text())
-      .then((data) => setMessage(data))
-      .catch((err) => console.error(err));
-  }, []);
+  const handleSubmit = async () => {
+    try {
+      const res = await fetch("http://localhost:8080/api/save", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: prompt,
+      });
+      const text = await res.text();
+      setResponse(text);
+    } catch (error) {
+      setResponse("Error: " + error.message);
+    }
+  };
 
   return (
-    <div>
-      <h1>Frontend + Backend Test</h1>
-      <p>{message}</p>
+    <div style={{ padding: "20px" }}>
+      <h2>Enter your prompt:</h2>
+      <textarea
+        rows="6"
+        cols="50"
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+      />
+      <br />
+      <button onClick={handleSubmit}>Submit</button>
+      <p>{response}</p>
     </div>
   );
 }
