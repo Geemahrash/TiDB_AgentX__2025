@@ -1,22 +1,23 @@
 package com.backend.AI.controller;
 
+import com.backend.AI.storage.PromptStorage;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.FileWriter;
-import java.io.IOException;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api")
 public class PromptController {
 
-    @PostMapping("/save")
-    public String savePrompt(@RequestBody String prompt) {
-        try (FileWriter writer = new FileWriter("prompt.txt",true)){
-            writer.write(prompt + System.lineSeparator());
-            return "Prompt saved successfully!";
-        }catch (IOException e){
-            return "error saving prompt : " + e.getMessage();
-        }
+    @PostMapping("/prompt")
+    public String savePrompt(@RequestBody PromptRequest request) {
+        // Store the prompt in PromptStorage using sessionId
+        PromptStorage.addPrompt(request.getSessionId(), request.getPrompt());
+        return "Prompt saved successfully for session: " + request.getSessionId();
     }
-}
+    @GetMapping("/prompts/{sessionId}")
+    public List<String> getPrompts(@PathVariable String sessionId) {
+        return PromptStorage.getPrompts(sessionId);
+    }
 
+}
