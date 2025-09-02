@@ -21,9 +21,26 @@ public class PromptController {
         return PromptStorage.getPrompts(sessionId);
     }
     @GetMapping("/getPromptObjects")
-    public List<PromptData> getPromptObjects(@RequestParam String sessionId) {
+    public List<PromptData> getPromptObject(@RequestParam String sessionId) {
         return PromptStorage.getPromptObjects(sessionId);
     }
-
+    @GetMapping("/promptObjects/{sessionId}")
+    public List<PromptData> getPromptObjects(@PathVariable String sessionId) {
+        return PromptStorage.getPromptObjects(sessionId);
+    }
+    @PutMapping("/requiredData")
+    public String updateRequiredData(
+            @RequestParam String sessionId,
+            @RequestParam int index,
+            @RequestBody String requiredData
+    ) {
+        var objects = PromptStorage.getPromptObjects(sessionId);
+        if (index >= 0 && index < objects.size()) {
+            objects.get(index).setRequiredData(requiredData);
+            return "Required data updated for prompt at index " + index;
+        } else {
+            return "Invalid index for session: " + sessionId;
+        }
+    }
 
 }
