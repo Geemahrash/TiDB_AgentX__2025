@@ -36,7 +36,5 @@ public class PromptData {
                 && (answer == null || answer.isBlank())
                 && !processing;
     }
-
-
-
+    
 }

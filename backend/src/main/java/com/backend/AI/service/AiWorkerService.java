@@ -2,6 +2,7 @@ package com.backend.AI.service;
 
 import com.backend.AI.storage.PromptData;
 import com.backend.AI.storage.PromptStorage;
+import com.backend.AI.tidbsearch.TidbSearchService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -26,11 +27,18 @@ public class AiWorkerService {
     private String geminiApiUrl;
 
     private final RestTemplate restTemplate = new RestTemplate();
+    private final TidbSearchService tidbSearchService;
+
+    // Constructor injection for TidbSearchService
+    public AiWorkerService(TidbSearchService tidbSearchService) {
+        this.tidbSearchService = tidbSearchService;
+    }
 
     /**
      * Runs every 2 seconds.
      * Iterates over all sessions and their prompt objects,
-     * picks one ready for processing, and sends it to Gemini.
+     * calls TiDB search if requiredData is empty,
+     * and then sends combined prompt+context to Gemini.
      */
     @Scheduled(fixedRate = 2000)
     public void processPrompts() {
@@ -44,8 +52,19 @@ public class AiWorkerService {
             for (PromptData obj : objects) {
                 if (obj.isReadyForProcessing()) {
                     obj.setProcessing(true);
-
                     logger.info("Processing prompt for session {}: {}", sessionId, obj.getPrompt());
+
+                    // 👉 Call TiDB search if requiredData is empty
+                    if (obj.getRequiredData() == null || obj.getRequiredData().isBlank()) {
+                        try {
+                            String requiredData = tidbSearchService.searchRequiredData(sessionId, obj.getPrompt());
+                            obj.setRequiredData(requiredData);
+                            logger.info("TiDB search filled requiredData for session {}: {}", sessionId, requiredData);
+                        } catch (Exception e) {
+                            logger.error("Error calling TiDB search", e);
+                            obj.setRequiredData("Error: TiDB search failed");
+                        }
+                    }
 
                     // Build input for Gemini
                     String combinedInput = obj.getPrompt();
@@ -77,16 +96,16 @@ public class AiWorkerService {
 
             // Build JSON payload for Gemini
             String body = """
-        {
-          "contents": [
             {
-              "parts": [
-                {"text": "%s"}
+              "contents": [
+                {
+                  "parts": [
+                    {"text": "%s"}
+                  ]
+                }
               ]
             }
-          ]
-        }
-        """.formatted(input.replace("\"", "\\\""));
+            """.formatted(input.replace("\"", "\\\""));
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
