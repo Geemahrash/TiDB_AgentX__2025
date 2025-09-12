@@ -1,19 +1,59 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import "./App.css";
+
+// Simple markdown-like formatter
+function formatMessage(text) {
+  if (!text) return "";
+  
+  // Convert bullet points
+  let formatted = text.replace(/\* ([^\n]+)/g, '<li>$1</li>');
+  formatted = formatted.replace(/(<li>[^<]+<\/li>)+/g, '<ul>$&</ul>');
+  
+  // Convert headers
+  formatted = formatted.replace(/#{3,6} ([^\n]+)/g, '<h4>$1</h4>');
+  formatted = formatted.replace(/## ([^\n]+)/g, '<h3>$1</h3>');
+  formatted = formatted.replace(/# ([^\n]+)/g, '<h2>$1</h2>');
+  
+  // Convert code blocks
+  formatted = formatted.replace(/```([^`]+)```/g, '<pre><code>$1</code></pre>');
+  
+  // Convert inline code
+  formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
+  
+  // Convert paragraphs
+  formatted = formatted.replace(/\n\n/g, '</p><p>');
+  
+  // Wrap in paragraph tags if not already wrapped
+  if (!formatted.startsWith('<')) {
+    formatted = '<p>' + formatted + '</p>';
+  }
+  
+  return formatted;
+}
 
 function App() {
   const [sessionId, setSessionId] = useState(null);
   const [prompt, setPrompt] = useState("");
   const [prompts, setPrompts] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [connectionError, setConnectionError] = useState(false);
+  const [conversations, setConversations] = useState([]);
+  const [activeConversation, setActiveConversation] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const messagesEndRef = useRef(null);
 
   // helper to fetch prompt objects safely
   const fetchPromptObjects = (sid) => {
     if (!sid) return;
+    setConnectionError(false);
     fetch(`http://localhost:8080/api/promptObjects/${sid}`)
       .then((res) => {
         if (!res.ok) {
           console.error("Failed to fetch prompt objects:", res.status);
+          setConnectionError(true);
           return [];
         }
+        setConnectionError(false);
         return res.json();
       })
       .then((data) => {
@@ -22,23 +62,89 @@ function App() {
       })
       .catch((err) => {
         console.error("Error fetching prompt objects:", err);
+        setConnectionError(true);
         setPrompts([]);
       });
   };
 
-  useEffect(() => {
-    // Generate or reuse sessionId
-    let existingSession = localStorage.getItem("sessionId");
-    if (!existingSession) {
-      if (typeof crypto !== "undefined" && crypto.randomUUID) {
-        existingSession = crypto.randomUUID();
-      } else {
-        // fallback simple uuid v4-ish
-        existingSession = "s-" + Math.random().toString(36).slice(2, 10);
-      }
-      localStorage.setItem("sessionId", existingSession);
+  // Load conversation history from localStorage
+  const loadConversations = () => {
+    const savedConversations = localStorage.getItem("conversations");
+    if (savedConversations) {
+      return JSON.parse(savedConversations);
     }
+    return [];
+  };
+
+  // Save conversation history to localStorage
+  const saveConversations = (convs) => {
+    localStorage.setItem("conversations", JSON.stringify(convs));
+  };
+
+  // Create a new conversation
+  const createNewConversation = () => {
+    let newSessionId;
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+      newSessionId = crypto.randomUUID();
+    } else {
+      // fallback simple uuid v4-ish
+      newSessionId = "s-" + Math.random().toString(36).slice(2, 10);
+    }
+    
+    const newConversation = {
+      id: newSessionId,
+      title: "New Conversation",
+      timestamp: new Date().toISOString(),
+      lastMessage: ""
+    };
+    
+    const updatedConversations = [newConversation, ...conversations];
+    setConversations(updatedConversations);
+    saveConversations(updatedConversations);
+    setSessionId(newSessionId);
+    setActiveConversation(newSessionId);
+    setPrompts([]);
+    return newSessionId;
+  };
+
+  // Update conversation title based on first message
+  const updateConversationTitle = (sid, message) => {
+    const updatedConversations = conversations.map(conv => {
+      if (conv.id === sid) {
+        // Use first 30 characters of first message as title
+        const title = message.length > 30 ? message.substring(0, 30) + "..." : message;
+        return { ...conv, title, lastMessage: message };
+      }
+      return conv;
+    });
+    
+    setConversations(updatedConversations);
+    saveConversations(updatedConversations);
+  };
+
+  // Switch to a different conversation
+  const switchConversation = (sid) => {
+    setSessionId(sid);
+    setActiveConversation(sid);
+    fetchPromptObjects(sid);
+  };
+
+  useEffect(() => {
+    // Load existing conversations
+    const loadedConversations = loadConversations();
+    setConversations(loadedConversations);
+    
+    // Generate or reuse sessionId
+    let existingSession = localStorage.getItem("currentSessionId");
+    if (!existingSession || !loadedConversations.some(conv => conv.id === existingSession)) {
+      // Create new conversation if no valid session exists
+      existingSession = createNewConversation();
+    } else {
+      setActiveConversation(existingSession);
+    }
+    
     setSessionId(existingSession);
+    localStorage.setItem("currentSessionId", existingSession);
 
     // initial fetch
     fetchPromptObjects(existingSession);
@@ -47,6 +153,15 @@ function App() {
     const interval = setInterval(() => fetchPromptObjects(existingSession), 2000);
     return () => clearInterval(interval);
   }, []);
+
+  // Scroll to bottom of messages when new messages arrive
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [prompts]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -58,6 +173,18 @@ function App() {
     if (!prompt || !prompt.trim()) return;
 
     const newPrompt = { sessionId: sessionId, prompt: prompt.trim() };
+    setIsLoading(true);
+    setConnectionError(false);
+
+    // Add the user message immediately for better UX
+    const userMessage = { sessionId: sessionId, prompt: prompt.trim(), answer: null };
+    setPrompts(prev => [...prev, userMessage]);
+    setPrompt(""); // clear input immediately for better UX
+
+    // Update conversation title if this is the first message
+    if (prompts.length === 0) {
+      updateConversationTitle(sessionId, prompt.trim());
+    }
 
     fetch("http://localhost:8080/api/prompt", {
       method: "POST",
@@ -67,47 +194,122 @@ function App() {
       .then((res) => {
         if (!res.ok) {
           console.error("Failed to save prompt:", res.status);
+          setConnectionError(true);
+        } else {
+          setConnectionError(false);
         }
         // refresh objects list after saving
         fetchPromptObjects(sessionId);
+        setIsLoading(false);
       })
       .catch((err) => {
         console.error("Error while saving prompt:", err);
+        setConnectionError(true);
+        setIsLoading(false);
       });
+  };
 
-    setPrompt(""); // clear input
+  // Toggle sidebar visibility
+  const toggleSidebar = () => {
+    setSidebarOpen(!sidebarOpen);
   };
 
   return (
-    <div style={{ padding: "20px" }}>
-      <h1>AI Prompt Chat</h1>
-
-      <form onSubmit={handleSubmit}>
-        <input
-          type="text"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Enter your prompt"
-          style={{ width: "300px", marginRight: "10px" }}
-        />
-        <button type="submit">Send</button>
-      </form>
-
-      <h2>Chat History</h2>
-
-      {Array.isArray(prompts) && prompts.length > 0 ? (
-        <ul>
-          {prompts.map((obj, idx) => (
-            <li key={idx} style={{ marginBottom: "10px", border: "1px solid #ddd", padding: 8 }}>
-              <p><strong>Prompt:</strong> {obj.prompt}</p>
-              <p><strong>Required Data:</strong> {obj.requiredData || "None"}</p>
-              <p><strong>Answer:</strong> {obj.answer || "Not generated yet"}</p>
-            </li>
+    <div className="app-container">
+      <div className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
+        <div className="sidebar-header">
+          <h2>Conversations</h2>
+          <button className="new-chat-button" onClick={createNewConversation}>
+            + New Chat
+          </button>
+        </div>
+        <div className="conversation-list">
+          {conversations.map((conv) => (
+            <div 
+              key={conv.id} 
+              className={`conversation-item ${conv.id === activeConversation ? 'active' : ''}`}
+              onClick={() => switchConversation(conv.id)}
+            >
+              <div className="conversation-title">{conv.title}</div>
+              <div className="conversation-timestamp">
+                {new Date(conv.timestamp).toLocaleDateString()}
+              </div>
+            </div>
           ))}
-        </ul>
-      ) : (
-        <p>No prompts yet.</p>
-      )}
+        </div>
+      </div>
+      
+      <div className="chat-container">
+        <div className="chat-header">
+          <button className="toggle-sidebar" onClick={toggleSidebar}>
+            ☰
+          </button>
+          <h1>AI Assistant</h1>
+          {connectionError && (
+            <div className="connection-error">
+              <span>⚠️ Connection error. Please check if the backend server is running.</span>
+            </div>
+          )}
+        </div>
+        
+        <div className="chat-messages">
+          {Array.isArray(prompts) && prompts.length > 0 ? (
+            prompts.map((obj, idx) => (
+              <React.Fragment key={idx}>
+                <div className="message user-message">
+                  <div className="message-content">{obj.prompt}</div>
+                </div>
+                {obj.answer !== undefined && (
+                  <div className="message assistant-message">
+                    <div className="message-content">
+                      {obj.answer ? (
+                        <div dangerouslySetInnerHTML={{ __html: formatMessage(obj.answer) }} />
+                      ) : (
+                        <div className="loading-container">
+                          {isLoading && idx === prompts.length - 1 ? (
+                            <div className="typing-indicator">
+                              <span></span>
+                              <span></span>
+                              <span></span>
+                            </div>
+                          ) : (
+                            <em>Waiting for response...</em>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </React.Fragment>
+            ))
+          ) : (
+            <div className="empty-state">
+              <p>No conversation yet. Send a message to start chatting!</p>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        <div className="chat-input-container">
+          <form onSubmit={handleSubmit} className="chat-form">
+            <input
+              type="text"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Send a message..."
+              className="chat-input"
+              disabled={isLoading}
+            />
+            <button 
+              type="submit" 
+              className="send-button"
+              disabled={isLoading || !prompt.trim()}
+            >
+              {isLoading ? "Sending..." : "Send"}
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }
