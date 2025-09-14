@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./App.css";
+import TidbSearch from "./components/TidbSearch";
+
 
 // Simple markdown-like formatter
 function formatMessage(text) {
@@ -8,6 +10,9 @@ function formatMessage(text) {
   // Convert bullet points
   let formatted = text.replace(/\* ([^\n]+)/g, '<li>$1</li>');
   formatted = formatted.replace(/(<li>[^<]+<\/li>)+/g, '<ul>$&</ul>');
+  
+  // Convert bold text (double asterisks)
+  formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   
   // Convert headers
   formatted = formatted.replace(/#{3,6} ([^\n]+)/g, '<h4>$1</h4>');
@@ -40,13 +45,23 @@ function App() {
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState('chat'); // 'chat' or 'tidb'
   const messagesEndRef = useRef(null);
 
   // helper to fetch prompt objects safely
   const fetchPromptObjects = (sid) => {
     if (!sid) return;
     setConnectionError(false);
-    fetch(`http://localhost:8080/api/promptObjects/${sid}`)
+    console.log("Fetching prompt objects for session:", sid);
+    fetch(`http://localhost:8081/api/promptObjects/${sid}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      mode: "cors",
+      credentials: "include"
+    })
       .then((res) => {
         if (!res.ok) {
           console.error("Failed to fetch prompt objects:", res.status);
@@ -57,6 +72,7 @@ function App() {
         return res.json();
       })
       .then((data) => {
+        console.log("Received data:", data);
         if (Array.isArray(data)) setPrompts(data);
         else setPrompts([]);
       })
@@ -156,12 +172,24 @@ function App() {
 
   // Scroll to bottom of messages when new messages arrive
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Only auto-scroll if user is already near the bottom
+    const chatMessages = document.querySelector('.chat-messages');
+    if (chatMessages) {
+      const isNearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 100;
+      if (isNearBottom) {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }
+    }
   };
 
   useEffect(() => {
     scrollToBottom();
   }, [prompts]);
+  
+  // Add a manual scroll button
+  const scrollToBottomManually = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -186,9 +214,14 @@ function App() {
       updateConversationTitle(sessionId, prompt.trim());
     }
 
-    fetch("http://localhost:8080/api/prompt", {
+    fetch("http://localhost:8081/api/prompt", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      mode: "cors",
+      credentials: "include",
       body: JSON.stringify(newPrompt),
     })
       .then((res) => {
@@ -245,6 +278,20 @@ function App() {
             ☰
           </button>
           <h1>AI Assistant</h1>
+          <div className="tab-navigation">
+            <button 
+              className={`tab-button ${activeTab === 'chat' ? 'active' : ''}`}
+              onClick={() => setActiveTab('chat')}
+            >
+              Chat
+            </button>
+            <button 
+              className={`tab-button ${activeTab === 'tidb' ? 'active' : ''}`}
+              onClick={() => setActiveTab('tidb')}
+            >
+              TiDB Search
+            </button>
+          </div>
           {connectionError && (
             <div className="connection-error">
               <span>⚠️ Connection error. Please check if the backend server is running.</span>
@@ -252,63 +299,78 @@ function App() {
           )}
         </div>
         
-        <div className="chat-messages">
-          {Array.isArray(prompts) && prompts.length > 0 ? (
-            prompts.map((obj, idx) => (
-              <React.Fragment key={idx}>
-                <div className="message user-message">
-                  <div className="message-content">{obj.prompt}</div>
-                </div>
-                {obj.answer !== undefined && (
-                  <div className="message assistant-message">
-                    <div className="message-content">
-                      {obj.answer ? (
-                        <div dangerouslySetInnerHTML={{ __html: formatMessage(obj.answer) }} />
-                      ) : (
-                        <div className="loading-container">
-                          {isLoading && idx === prompts.length - 1 ? (
-                            <div className="typing-indicator">
-                              <span></span>
-                              <span></span>
-                              <span></span>
-                            </div>
+        {activeTab === 'chat' ? (
+          <>
+            <div className="chat-messages">
+              {Array.isArray(prompts) && prompts.length > 0 ? (
+                prompts.map((obj, idx) => (
+                  <React.Fragment key={idx}>
+                    <div className="message user-message">
+                      <div className="message-content">{obj.prompt}</div>
+                    </div>
+                    {obj.answer !== undefined && (
+                      <div className="message assistant-message">
+                        <div className="message-content">
+                          {obj.answer ? (
+                            <div dangerouslySetInnerHTML={{ __html: formatMessage(obj.answer) }} />
                           ) : (
-                            <em>Waiting for response...</em>
+                            <div className="loading-container">
+                              {isLoading && idx === prompts.length - 1 ? (
+                                <div className="typing-indicator">
+                                  <span></span>
+                                  <span></span>
+                                  <span></span>
+                                </div>
+                              ) : (
+                                <em>Waiting for response...</em>
+                              )}
+                            </div>
                           )}
                         </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </React.Fragment>
-            ))
-          ) : (
-            <div className="empty-state">
-              <p>No conversation yet. Send a message to start chatting!</p>
+                      </div>
+                    )}
+                  </React.Fragment>
+                ))
+              ) : (
+                <div className="empty-state">
+                  <p>No conversation yet. Send a message to start chatting!</p>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+              {prompts.length > 3 && (
+                <button 
+                  className="scroll-bottom-button" 
+                  onClick={scrollToBottomManually}
+                  title="Scroll to bottom"
+                >
+                  ↓
+                </button>
+              )}
             </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
 
-        <div className="chat-input-container">
-          <form onSubmit={handleSubmit} className="chat-form">
-            <input
-              type="text"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Send a message..."
-              className="chat-input"
-              disabled={isLoading}
-            />
-            <button 
-              type="submit" 
-              className="send-button"
-              disabled={isLoading || !prompt.trim()}
-            >
-              {isLoading ? "Sending..." : "Send"}
-            </button>
-          </form>
-        </div>
+            <div className="chat-input-container">
+              <form onSubmit={handleSubmit} className="chat-form">
+                <input
+                  type="text"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="Send a message..."
+                  className="chat-input"
+                  disabled={isLoading}
+                />
+                <button 
+                  type="submit" 
+                  className="send-button"
+                  disabled={isLoading || !prompt.trim()}
+                >
+                  {isLoading ? "Sending..." : "Send"}
+                </button>
+              </form>
+            </div>
+          </>
+        ) : (
+          <TidbSearch />
+        )}
       </div>
     </div>
   );
