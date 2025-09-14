@@ -1,9 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./App.css";
-import ConversationHistory from './components/ConversationHistory';
-import MessageDisplay from './components/MessageDisplay';
-import MessageInput from './components/MessageInput';
-import ChatHeader from './components/ChatHeader';
 
 // Simple markdown-like formatter
 function formatMessage(text) {
@@ -17,9 +13,6 @@ function formatMessage(text) {
   formatted = formatted.replace(/#{3,6} ([^\n]+)/g, '<h4>$1</h4>');
   formatted = formatted.replace(/## ([^\n]+)/g, '<h3>$1</h3>');
   formatted = formatted.replace(/# ([^\n]+)/g, '<h2>$1</h2>');
-  
-  // Convert bold text (double asterisks)
-  formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   
   // Convert code blocks
   formatted = formatted.replace(/```([^`]+)```/g, '<pre><code>$1</code></pre>');
@@ -53,15 +46,7 @@ function App() {
   const fetchPromptObjects = (sid) => {
     if (!sid) return;
     setConnectionError(false);
-    fetch(`http://localhost:8080/api/promptObjects/${sid}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      mode: 'cors',
-      cache: 'no-cache'
-    })
+    fetch(`http://localhost:8080/api/promptObjects/${sid}`)
       .then((res) => {
         if (!res.ok) {
           console.error("Failed to fetch prompt objects:", res.status);
@@ -139,26 +124,10 @@ function App() {
 
   // Switch to a different conversation
   const switchConversation = (sid) => {
-    // Save current session ID to localStorage
-    localStorage.setItem("currentSessionId", sid);
-    
-    // Update state
     setSessionId(sid);
     setActiveConversation(sid);
-    
-    // Fetch conversation data
     fetchPromptObjects(sid);
-    
-    // Reset auto-refresh for the new conversation
-    if (autoRefresh) {
-      startAutoRefresh(sid);
-    }
   };
-
-  // State to track if we should auto-refresh
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [lastRefreshTime, setLastRefreshTime] = useState(Date.now());
-  const refreshIntervalRef = useRef(null);
 
   useEffect(() => {
     // Load existing conversations
@@ -180,67 +149,19 @@ function App() {
     // initial fetch
     fetchPromptObjects(existingSession);
 
-    // Set up auto-refresh but with a way to disable it
-    startAutoRefresh(existingSession);
-    
-    return () => {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-      }
-    };
+    // auto-refresh every 2 seconds so processed answers appear without manual reload
+    const interval = setInterval(() => fetchPromptObjects(existingSession), 2000);
+    return () => clearInterval(interval);
   }, []);
-  
-  // Function to start auto-refresh
-  const startAutoRefresh = (sid) => {
-    if (refreshIntervalRef.current) {
-      clearInterval(refreshIntervalRef.current);
-    }
-    
-    refreshIntervalRef.current = setInterval(() => {
-      if (autoRefresh) {
-        fetchPromptObjects(sid);
-        setLastRefreshTime(Date.now());
-      }
-    }, 5000); // Changed from 2000ms to 5000ms for less frequent refreshes
-  };
-  
-  // Function to stop auto-refresh
-  const stopAutoRefresh = () => {
-    setAutoRefresh(false);
-    if (refreshIntervalRef.current) {
-      clearInterval(refreshIntervalRef.current);
-      refreshIntervalRef.current = null;
-    }
-  };
-  
-  // Function to manually refresh
-  const manualRefresh = () => {
-    if (sessionId) {
-      fetchPromptObjects(sessionId);
-      setLastRefreshTime(Date.now());
-    }
-  };
 
-  // State to track if auto-scrolling is enabled
-  const [autoScroll, setAutoScroll] = useState(true);
-  
   // Scroll to bottom of messages when new messages arrive
   const scrollToBottom = () => {
-    if (autoScroll) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
     scrollToBottom();
-  }, [prompts, autoScroll]);
-  
-  // Detect manual scrolling to disable auto-scroll
-  const handleScroll = (e) => {
-    const element = e.target;
-    const isScrolledToBottom = Math.abs(element.scrollHeight - element.scrollTop - element.clientHeight) < 50;
-    setAutoScroll(isScrolledToBottom);
-  };
+  }, [prompts]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -263,22 +184,6 @@ function App() {
     // Update conversation title if this is the first message
     if (prompts.length === 0) {
       updateConversationTitle(sessionId, prompt.trim());
-    } else {
-      // Update the last message in conversation history
-      const updatedConversations = conversations.map(conv => {
-        if (conv.id === sessionId) {
-          return { ...conv, lastMessage: prompt.trim() };
-        }
-        return conv;
-      });
-      setConversations(updatedConversations);
-      saveConversations(updatedConversations);
-    }
-    
-    // Ensure auto-refresh is active
-    if (!autoRefresh) {
-      setAutoRefresh(true);
-      startAutoRefresh(sessionId);
     }
 
     fetch("http://localhost:8080/api/prompt", {
@@ -311,38 +216,99 @@ function App() {
 
   return (
     <div className="app-container">
-      <ConversationHistory 
-        conversations={conversations}
-        activeConversation={activeConversation}
-        switchConversation={switchConversation}
-        createNewConversation={createNewConversation}
-        sidebarOpen={sidebarOpen}
-      />
+      <div className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
+        <div className="sidebar-header">
+          <h2>Conversations</h2>
+          <button className="new-chat-button" onClick={createNewConversation}>
+            + New Chat
+          </button>
+        </div>
+        <div className="conversation-list">
+          {conversations.map((conv) => (
+            <div 
+              key={conv.id} 
+              className={`conversation-item ${conv.id === activeConversation ? 'active' : ''}`}
+              onClick={() => switchConversation(conv.id)}
+            >
+              <div className="conversation-title">{conv.title}</div>
+              <div className="conversation-timestamp">
+                {new Date(conv.timestamp).toLocaleDateString()}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
       
       <div className="chat-container">
-        <ChatHeader 
-          toggleSidebar={toggleSidebar}
-          autoRefresh={autoRefresh}
-          setAutoRefresh={setAutoRefresh}
-          manualRefresh={manualRefresh}
-          autoScroll={autoScroll}
-          setAutoScroll={setAutoScroll}
-          lastRefreshTime={lastRefreshTime}
-          connectionError={connectionError}
-        />
+        <div className="chat-header">
+          <button className="toggle-sidebar" onClick={toggleSidebar}>
+            ☰
+          </button>
+          <h1>AI Assistant</h1>
+          {connectionError && (
+            <div className="connection-error">
+              <span>⚠️ Connection error. Please check if the backend server is running.</span>
+            </div>
+          )}
+        </div>
         
-        <MessageDisplay 
-          prompts={prompts}
-          isLoading={isLoading}
-          formatMessage={formatMessage}
-          autoScroll={autoScroll}
-          handleScroll={handleScroll}
-        />
+        <div className="chat-messages">
+          {Array.isArray(prompts) && prompts.length > 0 ? (
+            prompts.map((obj, idx) => (
+              <React.Fragment key={idx}>
+                <div className="message user-message">
+                  <div className="message-content">{obj.prompt}</div>
+                </div>
+                {obj.answer !== undefined && (
+                  <div className="message assistant-message">
+                    <div className="message-content">
+                      {obj.answer ? (
+                        <div dangerouslySetInnerHTML={{ __html: formatMessage(obj.answer) }} />
+                      ) : (
+                        <div className="loading-container">
+                          {isLoading && idx === prompts.length - 1 ? (
+                            <div className="typing-indicator">
+                              <span></span>
+                              <span></span>
+                              <span></span>
+                            </div>
+                          ) : (
+                            <em>Waiting for response...</em>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </React.Fragment>
+            ))
+          ) : (
+            <div className="empty-state">
+              <p>No conversation yet. Send a message to start chatting!</p>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
 
-        <MessageInput 
-          onSubmit={handleSubmit}
-          isLoading={isLoading}
-        />
+        <div className="chat-input-container">
+          <form onSubmit={handleSubmit} className="chat-form">
+            <input
+              type="text"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Send a message..."
+              className="chat-input"
+              disabled={isLoading}
+            />
+            <button 
+              type="submit" 
+              className="send-button"
+              disabled={isLoading || !prompt.trim()}
+            >
+              {isLoading ? "Sending..." : "Send"}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );

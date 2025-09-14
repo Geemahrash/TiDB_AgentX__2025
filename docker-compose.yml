@@ -1,68 +1,13 @@
-services:
-  mysql:
-    image: 'mysql:8.0.32'
-    container_name: mysql-service
-    environment:
-      - 'MYSQL_DATABASE=mydatabase'
-      - 'MYSQL_PASSWORD=secret'
-      - 'MYSQL_ROOT_PASSWORD=verysecret'
-      - 'MYSQL_USER=myuser'
-      - 'MYSQL_INITDB_SKIP_TZINFO=1'
-    ports:
-      - '3306:3306'
-    networks:
-      - app-network
-    volumes:
-      - mysql-data:/var/lib/mysql
-      - ./backend/src/main/resources/init.sql:/docker-entrypoint-initdb.d/init.sql
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max_allowed_packet=128M --innodb_buffer_pool_size=256M
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pverysecret"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    restart: always
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 256M
+version: "3.9"
 
+services:
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    build: ./backend
     container_name: backend-service
     ports:
       - "8080:8080"
     networks:
       - app-network
-    depends_on:
-      mysql:
-        condition: service_healthy
-    environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/mydatabase?useSSL=false&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true&serverTimezone=UTC
-      - SPRING_DATASOURCE_USERNAME=myuser
-      - SPRING_DATASOURCE_PASSWORD=secret
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
-      - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=10
-      - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=5
-      - SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT=30000
-      - SPRING_DATASOURCE_HIKARI_IDLE_TIMEOUT=600000
-      - SPRING_DATASOURCE_HIKARI_MAX_LIFETIME=1800000
-      - JAVA_OPTS=-Xmx512m -Xms256m -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp -Djava.security.egd=file:/dev/./urandom
-      - SPRING_PROFILES_ACTIVE=docker
-    restart: always
-    deploy:
-      resources:
-        limits:
-          memory: 768M
-        reservations:
-          memory: 512M
-    volumes:
-      - ./backend/wait-for-it.sh:/app/wait-for-it.sh
 
   frontend:
     build: ./frontend
@@ -73,12 +18,7 @@ services:
       - app-network
     environment:
       - REACT_APP_API_URL=http://backend:8080   # so frontend calls backend via service name
-    depends_on:
-      - backend
 
 networks:
   app-network:
     driver: bridge
-
-volumes:
-  mysql-data:
