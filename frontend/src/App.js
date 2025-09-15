@@ -120,6 +120,10 @@ function App() {
     setSessionId(newSessionId);
     setActiveConversation(newSessionId);
     setPrompts([]);
+    // Due to this part of the code we are able to run multiple conversations at the same time in different tabs.<exclusive>
+    // Update current session ID in localStorage
+    localStorage.setItem("currentSessionId", newSessionId);
+    
     return newSessionId;
   };
 
@@ -164,11 +168,19 @@ function App() {
 
     // initial fetch
     fetchPromptObjects(existingSession);
-
+  }, []);  // Empty dependency array for initial load only
+  
+  // Set up auto-refresh for the active conversation
+  useEffect(() => {
+    if (!activeConversation) return;
+    
     // auto-refresh every 2 seconds so processed answers appear without manual reload
-    const interval = setInterval(() => fetchPromptObjects(existingSession), 2000);
+    const interval = setInterval(() => {
+      fetchPromptObjects(activeConversation);
+    }, 2000);
+    
     return () => clearInterval(interval);
-  }, []);
+  }, [activeConversation]);  // Re-run when active conversation changes
 
   // Scroll to bottom of messages when new messages arrive
   const scrollToBottom = () => {
@@ -285,12 +297,12 @@ function App() {
             >
               Chat
             </button>
-            <button 
+            {/* <button 
               className={`tab-button ${activeTab === 'tidb' ? 'active' : ''}`}
               onClick={() => setActiveTab('tidb')}
             >
               TiDB Search
-            </button>
+            </button> */}
           </div>
           {connectionError && (
             <div className="connection-error">
@@ -369,7 +381,7 @@ function App() {
             </div>
           </>
         ) : (
-          <TidbSearch />
+          <TidbSearch sessionId={sessionId} />
         )}
       </div>
     </div>
