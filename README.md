@@ -22,13 +22,21 @@ To get the application up and running, follow these simple steps:
    ```
    This command will build the necessary images and start two containers: one for the frontend and one for the backend.
 
-## Running the Application Locally
+## Fixing Backend Connection Issues
 
-1. **Start the Backend**
+1. **If the frontend shows “Backend Not Connected”, simply run the provided batch file:**
    ```
    ./run-backend.bat
    ```
-   This will start the Spring Boot backend on port 8081.
+   This script will:
+
+Create a bridge container that resolves database connection conflicts between the backend and TiDB.
+
+Establish a stable link so the Spring Boot backend can communicate properly with the database.
+
+Ensure the frontend can connect to the backend without errors.
+ Recommendation:
+Keep this extra container running in the background while developing. It’s outside your main docker-compose setup and can be stopped later if needed, but keeping it running during development ensures everything works smoothly..
 
 2. **Start the Frontend**
    ```
