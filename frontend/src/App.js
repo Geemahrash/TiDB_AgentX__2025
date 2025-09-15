@@ -285,12 +285,12 @@ function App() {
             >
               Chat
             </button>
-            <button 
+            {/* <button 
               className={`tab-button ${activeTab === 'tidb' ? 'active' : ''}`}
               onClick={() => setActiveTab('tidb')}
             >
               TiDB Search
-            </button>
+            </button> */}
           </div>
           {connectionError && (
             <div className="connection-error">
