@@ -38,13 +38,6 @@ Ensure the frontend can connect to the backend without errors.
  Recommendation:
 Keep this extra container running in the background while developing. It’s outside your main docker-compose setup and can be stopped later if needed, but keeping it running during development ensures everything works smoothly..
 
-2. **Start the Frontend**
-   ```
-   cd frontend
-   npm install (first time only)
-   npm start
-   ```
-   This will start the React frontend on port 3000.
 
 ## Accessing the Application
 
