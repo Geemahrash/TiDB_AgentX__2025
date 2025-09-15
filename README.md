@@ -1,6 +1,6 @@
 # TiDB4 Application with B+ Tree Search
 
-This application demonstrates the use of TiDB's B+ tree indexing capabilities for efficient question-answer data retrieval.
+This application demonstrates the use of  B+ tree indexing capabilities for efficient question-answer data retrieval.
 
 ## Features
 
