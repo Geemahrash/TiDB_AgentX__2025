@@ -289,7 +289,7 @@ function App() {
           <button className="toggle-sidebar" onClick={toggleSidebar}>
             ☰
           </button>
-          <h1>AI Assistant</h1>
+          <h1>JEE AI Assistant</h1>
           <div className="tab-navigation">
             <button 
               className={`tab-button ${activeTab === 'chat' ? 'active' : ''}`}
